@@ -195,29 +195,27 @@ export function TrainerScreen() {
         </p>
         <div className="mt-3 flex flex-col sm:flex-row items-start gap-4">
           <div className="bg-white p-3 rounded-xl ring-1 ring-slate-200">
-            <QRCodeSVG
-              value={typeof window !== "undefined" ? window.location.origin : ""}
-              size={140}
-              level="M"
-            />
+            <QRCodeSVG value={shareUrl()} size={140} level="M" />
           </div>
           <div className="flex-1 w-full">
             <div className="text-xs text-slate-500 mb-1">Lien direct</div>
             <div className="flex items-center gap-2">
               <input
                 readOnly
-                value={typeof window !== "undefined" ? window.location.origin : ""}
+                value={shareUrl()}
                 className="input text-xs flex-1"
               />
               <button
-                onClick={() =>
-                  navigator.clipboard?.writeText(window.location.origin)
-                }
+                onClick={() => navigator.clipboard?.writeText(shareUrl())}
                 className="btn-ghost text-xs"
               >
                 Copier
               </button>
             </div>
+            <p className="mt-2 text-[11px] text-slate-400">
+              Astuce : ajoute <code>?name=Marie&amp;job=voirie</code> à la fin du
+              lien pour pré-remplir le profil d'un stagiaire.
+            </p>
           </div>
         </div>
       </div>
@@ -244,6 +242,19 @@ function Stat({
       </div>
     </div>
   );
+}
+
+/**
+ * URL canonique à partager (origin + pathname, sans index.html ni params).
+ * Évite que le QR code pointe vers la racine du domaine quand l'app est
+ * hébergée dans un sous-dossier (ex. GitHub Pages : /serious-game-gestion-temps/).
+ */
+function shareUrl() {
+  if (typeof window === "undefined") return "";
+  const { origin, pathname } = window.location;
+  const cleaned = pathname.replace(/index\.html$/i, "");
+  const trailing = cleaned.endsWith("/") ? cleaned : cleaned + "/";
+  return origin + trailing;
 }
 
 function dominantProfile(sessions: SessionRecord[]) {
