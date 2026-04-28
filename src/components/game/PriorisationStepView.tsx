@@ -51,6 +51,7 @@ export function PriorisationStepView({
   const [assignments, setAssignments] = useState<
     Record<string, PriorisationQuadrant | undefined>
   >({});
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [validated, setValidated] = useState(false);
 
   const allAssigned = useMemo(
@@ -64,13 +65,29 @@ export function PriorisationStepView({
     [assignments, step.tasks]
   );
 
-  function setAssignment(taskId: string, q: PriorisationQuadrant) {
+  function pickTask(taskId: string) {
     if (validated) return;
-    setAssignments((a) => ({ ...a, [taskId]: q }));
+    setSelectedTaskId((cur) => (cur === taskId ? null : taskId));
+  }
+
+  function dropOnQuadrant(q: PriorisationQuadrant) {
+    if (validated || !selectedTaskId) return;
+    setAssignments((a) => ({ ...a, [selectedTaskId]: q }));
+    setSelectedTaskId(null);
+  }
+
+  function unassign(taskId: string) {
+    if (validated) return;
+    setAssignments((a) => {
+      const next = { ...a };
+      delete next[taskId];
+      return next;
+    });
   }
 
   function validate() {
     setValidated(true);
+    setSelectedTaskId(null);
   }
 
   function next() {
@@ -80,6 +97,8 @@ export function PriorisationStepView({
     const timeDelta = good ? 5 : ratio >= 0.4 ? 0 : -8;
     onResolved(good, scoreDelta, timeDelta);
   }
+
+  const pendingTasks = step.tasks.filter((t) => !assignments[t.id]);
 
   return (
     <div className="card animate-slideUp">
@@ -91,53 +110,75 @@ export function PriorisationStepView({
         </div>
       </div>
 
+      {/* Help banner */}
+      {!validated && (
+        <div
+          className={`mt-4 rounded-xl border p-3 text-sm transition ${
+            selectedTaskId
+              ? "border-brand-500 bg-brand-50 text-brand-800 animate-pulseSoft"
+              : "border-slate-200 bg-slate-50 text-slate-600"
+          }`}
+        >
+          {selectedTaskId ? (
+            <span>
+              <span className="font-semibold">2/2 ·</span> Choisis maintenant la{" "}
+              <strong>case</strong> où tu veux placer cette tâche ↓
+            </span>
+          ) : (
+            <span>
+              <span className="font-semibold">1/2 ·</span> Sélectionne d'abord
+              une <strong>tâche</strong> dans la liste ci-dessous, puis touche
+              la case voulue.
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Pending pool */}
       <div className="mt-4">
         <div className="text-xs font-semibold text-slate-500 mb-2 uppercase tracking-wide">
-          Tâches à classer
+          {pendingTasks.length > 0
+            ? `Tâches à classer (${pendingTasks.length})`
+            : "Toutes les tâches sont classées ✅"}
         </div>
         <div className="flex flex-wrap gap-2">
-          {step.tasks.map((t) => {
-            const q = assignments[t.id];
-            const correct = validated ? q === t.correct : null;
+          {pendingTasks.map((t) => {
+            const isSelected = selectedTaskId === t.id;
             return (
               <button
                 key={t.id}
                 disabled={validated}
-                onClick={() => {
-                  if (validated) return;
-                  // cycle through quadrants on tap (mobile-friendly)
-                  const next = nextQuadrant(q);
-                  setAssignment(t.id, next);
-                }}
+                onClick={() => pickTask(t.id)}
                 className={`text-xs sm:text-sm px-3 py-2 rounded-full border transition ${
-                  validated
-                    ? correct
-                      ? "border-success-500 bg-success-500/10 text-success-700"
-                      : "border-danger-500 bg-danger-500/10 text-danger-700"
-                    : q
-                    ? `${QUADRANT_META[q].color} border`
-                    : "bg-white border-slate-200 hover:border-brand-400"
+                  isSelected
+                    ? "border-brand-500 bg-brand-500 text-white ring-4 ring-brand-500/20 scale-105"
+                    : "bg-white border-slate-300 hover:border-brand-400 hover:bg-brand-50"
                 }`}
               >
-                {q ? QUADRANT_META[q].emoji + " " : ""}
                 {t.label}
               </button>
             );
           })}
         </div>
-        <div className="mt-1 text-xs text-slate-500">
-          Touche une tâche pour la déplacer entre les 4 quadrants ↓
-        </div>
       </div>
 
+      {/* Eisenhower 2x2 grid */}
       <div className="mt-5 grid grid-cols-2 gap-3">
         {QUADRANTS.map((q) => {
           const meta = QUADRANT_META[q];
           const items = step.tasks.filter((t) => assignments[t.id] === q);
+          const isDropTarget = !!selectedTaskId && !validated;
           return (
-            <div
+            <button
+              type="button"
               key={q}
-              className={`rounded-xl border p-3 min-h-[120px] ${meta.color}`}
+              disabled={validated || !selectedTaskId}
+              onClick={() => dropOnQuadrant(q)}
+              className={`text-left rounded-xl border p-3 min-h-[130px] transition ${meta.color} ${
+                isDropTarget
+                  ? "ring-2 ring-brand-500/40 hover:ring-4 hover:scale-[1.02] cursor-pointer"
+                  : "cursor-default"
+              }`}
             >
               <div className="font-semibold text-xs sm:text-sm flex items-center gap-1">
                 <span>{meta.emoji}</span>
@@ -146,18 +187,38 @@ export function PriorisationStepView({
               <div className="text-[11px] opacity-80 mb-2">{meta.help}</div>
               <div className="flex flex-wrap gap-1.5">
                 {items.length === 0 && (
-                  <span className="text-[11px] opacity-50">Vide</span>
-                )}
-                {items.map((t) => (
-                  <span
-                    key={t.id}
-                    className="px-2 py-1 bg-white/70 rounded-md text-[11px] border border-current/20"
-                  >
-                    {t.label}
+                  <span className="text-[11px] opacity-50">
+                    {isDropTarget ? "Touche pour déposer ici" : "Vide"}
                   </span>
-                ))}
+                )}
+                {items.map((t) => {
+                  const correct = validated ? assignments[t.id] === t.correct : null;
+                  return (
+                    <span
+                      key={t.id}
+                      role={!validated ? "button" : undefined}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (!validated) unassign(t.id);
+                      }}
+                      className={`px-2 py-1 rounded-md text-[11px] border transition ${
+                        validated
+                          ? correct
+                            ? "bg-white border-success-500 text-success-700"
+                            : "bg-white border-danger-500 text-danger-700"
+                          : "bg-white/80 border-current/20 hover:bg-white hover:border-danger-400 cursor-pointer"
+                      }`}
+                      title={!validated ? "Cliquer pour retirer" : undefined}
+                    >
+                      {t.label}
+                      {!validated && (
+                        <span className="ml-1 opacity-60">×</span>
+                      )}
+                    </span>
+                  );
+                })}
               </div>
-            </div>
+            </button>
           );
         })}
       </div>
@@ -187,18 +248,4 @@ export function PriorisationStepView({
       )}
     </div>
   );
-}
-
-function nextQuadrant(
-  current?: PriorisationQuadrant
-): PriorisationQuadrant {
-  const order: PriorisationQuadrant[] = [
-    "urgent_important",
-    "important_non_urgent",
-    "urgent_non_important",
-    "inutile",
-  ];
-  if (!current) return order[0];
-  const idx = order.indexOf(current);
-  return order[(idx + 1) % order.length];
 }
